@@ -154,9 +154,7 @@ export const useDataEngine = ({ updateState, updatePosition, updateCarData }: Pr
 		const maxDelay = Math.min(
 			...Object.values(buffers)
 				.map((buffer) => buffer.maxDelay())
-				.filter((delay) => delay > 0),
-			carBuffer.maxDelay(),
-			posBuffer.maxDelay(),
+				.filter((delay) => delay > 0)
 		);
 
 		setMaxDelay(maxDelay);
