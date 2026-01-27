@@ -19,14 +19,7 @@ jobs:
 
     strategy:
       matrix:
-        image:
-          [
-            f1-dash,
-            f1-dash-api,
-            f1-dash-live,
-            f1-dash-importer,
-            f1-dash-analytics,
-          ]
+        image: [f1-dash, f1-dash-api, f1-dash-realtime]
 
     permissions:
       contents: read
