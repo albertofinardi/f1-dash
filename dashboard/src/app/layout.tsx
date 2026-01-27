@@ -23,12 +23,6 @@ export default function RootLayout({ children }: Props) {
 			<head>
 				<EnvScript />
 
-				{env.DISABLE_IFRAME === "1" && (
-					<Script strategy="beforeInteractive" id="no-embed">
-						{`if (window.self !== window.top && window.location.pathname !== "/embed") {window.location.href = "/embed"; }`}
-					</Script>
-				)}
-
 				{env.TRACKING_ID && env.TRACKING_URL && (
 					<>
 						<Script strategy="afterInteractive" data-site-id={env.TRACKING_ID} src={env.TRACKING_URL} />
