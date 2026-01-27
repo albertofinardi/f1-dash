@@ -1339,16 +1339,14 @@ dependencies = [
  "async-stream",
  "axum",
  "futures",
- "reqwest",
  "serde",
  "serde_json",
  "shared",
+ "signalr",
  "tokio",
  "tokio-stream",
- "tokio-tungstenite 0.27.0",
  "tower-http",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -1691,6 +1689,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "signalr"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite 0.27.0",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "simulator"
 version = "0.1.0"
 dependencies = [
@@ -1701,7 +1715,9 @@ dependencies = [
  "serde",
  "serde_json",
  "shared",
+ "signalr",
  "tokio",
+ "tokio-stream",
  "tracing",
 ]
 

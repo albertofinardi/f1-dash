@@ -10,7 +10,6 @@ mod http_server;
 mod services {
     pub mod state_service;
 }
-mod signalr;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {

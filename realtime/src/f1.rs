@@ -5,7 +5,6 @@ use tokio_stream::StreamExt;
 use tracing::{error, trace, warn};
 
 use crate::services::state_service::StateService;
-use crate::signalr;
 
 const URL: &str = "livetiming.formula1.com/signalr";
 const HUB: &str = "Streaming";

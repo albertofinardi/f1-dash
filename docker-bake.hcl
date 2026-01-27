@@ -2,6 +2,21 @@ group "default" {
   targets = ["f1-dash", "f1-dash-api", "f1-dash-realtime"]
 }
 
+group "arm64" {
+  targets = ["f1-dash", "f1-dash-api", "f1-dash-realtime"]
+  platforms = ["linux/arm64"]
+}
+
+group "amd64" {
+  targets = ["f1-dash", "f1-dash-api", "f1-dash-realtime"]
+  platforms = ["linux/amd64"]
+}
+
+group "all" {
+  targets = ["f1-dash", "f1-dash-api", "f1-dash-realtime"]
+  platforms = ["linux/arm64", "linux/amd64"]
+}
+
 target "docker-metadata-action" {}
 
 // actual servives and images below
@@ -11,8 +26,6 @@ target "f1-dash" {
 
   context = "./dashboard"
   dockerfile = "dockerfile"
-
-  platforms = ["linux/amd64", "linux/arm64"]
 
   tags = ["ghcr.io/slowlydev/f1-dash:latest"]
 }
@@ -24,8 +37,6 @@ target "f1-dash-api" {
   dockerfile = "dockerfile"
   target = "api"
 
-  platforms = ["linux/amd64", "linux/arm64"]
-
   tags = ["ghcr.io/slowlydev/f1-dash-api:latest"]
 }
 
@@ -35,8 +46,6 @@ target "f1-dash-realtime" {
   context = "."
   dockerfile = "dockerfile"
   target = "realtime"
-
-  platforms = ["linux/amd64", "linux/arm64"]
 
   tags = ["ghcr.io/slowlydev/f1-dash-realtime:latest"]
 }

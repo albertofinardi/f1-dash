@@ -136,7 +136,6 @@ struct Args {
 pub struct UpdateArgs {
     pub topic: String,
     pub data: serde_json::Value,
-    #[allow(dead_code)]
     pub timestamp: String,
 }
 
@@ -185,6 +184,8 @@ async fn receive_valid_response(stream: &mut WsStream) -> Result<Response, anyho
     }
 }
 
+/// Listen to WebSocket messages and parse them into structured UpdateArgs.
+/// This is useful when you need to process the data programmatically.
 pub fn listen(client: SignalrClient) -> impl Stream<Item = Vec<UpdateArgs>> {
     client
         .stream
@@ -216,4 +217,23 @@ pub fn listen(client: SignalrClient) -> impl Stream<Item = Vec<UpdateArgs>> {
 
             Some(updates)
         })
+}
+
+/// Listen to raw WebSocket messages without parsing them.
+/// Returns the raw text messages as-is, useful for saving to a file for replay.
+pub fn listen_raw(client: SignalrClient) -> impl Stream<Item = String> {
+    client.stream.filter_map(|message| {
+        trace!("raw message received");
+
+        match message {
+            Ok(message) => match message {
+                Message::Text(txt) => Some(txt.to_string()),
+                _ => None,
+            },
+            Err(err) => {
+                error!(?err, "ws error");
+                None
+            }
+        }
+    })
 }
