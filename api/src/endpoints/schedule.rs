@@ -1,6 +1,7 @@
 use std::io::BufReader;
 use std::time::Duration;
 
+use anyhow::Error;
 use chrono::{DateTime, Datelike, NaiveDateTime, TimeZone, Utc};
 use ical::parser::ical::component::IcalEvent;
 use regex::Regex;
@@ -29,12 +30,45 @@ pub struct Round {
     over: bool,
 }
 
-fn parse_ical_utc(date_string: &str) -> Option<DateTime<Utc>> {
-    // Attempt to parse the date string
-    match NaiveDateTime::parse_from_str(date_string, "%Y%m%dT%H%M%SZ") {
-        Ok(naive_datetime) => Some(Utc.from_utc_datetime(&naive_datetime)),
-        Err(_) => None,
+fn parse_ical_utc(date_string: &str) -> Result<DateTime<Utc>, anyhow::Error> {
+    // Trim any whitespace
+    let date_string = date_string.trim();
+
+    // Check string length to determine format
+    let len = date_string.len();
+
+    // Date only format: YYYYMMDD (8 characters)
+    if len == 8 && !date_string.contains('T') {
+        let naive_date = chrono::NaiveDate::parse_from_str(date_string, "%Y%m%d").map_err(|e| {
+            anyhow::anyhow!("Failed to parse date-only string '{}': {}", date_string, e)
+        })?;
+        let naive_datetime = naive_date.and_hms_opt(0, 0, 0).unwrap();
+        return Ok(Utc.from_utc_datetime(&naive_datetime));
     }
+
+    // UTC datetime with Z suffix: YYYYMMDDTHHMMSSZ (16 characters)
+    if date_string.ends_with('Z') {
+        let naive_datetime =
+            NaiveDateTime::parse_from_str(date_string, "%Y%m%dT%H%M%SZ").map_err(|e| {
+                anyhow::anyhow!("Failed to parse UTC datetime '{}': {}", date_string, e)
+            })?;
+        return Ok(Utc.from_utc_datetime(&naive_datetime));
+    }
+
+    // Local datetime without Z: YYYYMMDDTHHMMSS (15 characters)
+    if date_string.contains('T') {
+        let naive_datetime =
+            NaiveDateTime::parse_from_str(date_string, "%Y%m%dT%H%M%S").map_err(|e| {
+                anyhow::anyhow!("Failed to parse local datetime '{}': {}", date_string, e)
+            })?;
+        return Ok(Utc.from_utc_datetime(&naive_datetime));
+    }
+
+    Err(anyhow::anyhow!(
+        "Failed to parse date string '{}': unrecognized format (length: {})",
+        date_string,
+        len
+    ))
 }
 
 fn get_property(event: &IcalEvent, name: &str) -> Option<String> {
@@ -57,10 +91,13 @@ fn parse_name(full_name: &str) -> Option<(String, String)> {
     Some((captures["name"].to_owned(), captures["kind"].to_owned()))
 }
 
-fn new_round(event: IcalEvent, name: &str, kind: &str) -> Option<Round> {
-    let country = get_property(&event, "LOCATION")?;
-    let start_str = get_property(&event, "DTSTART")?;
-    let end_str = get_property(&event, "DTEND")?;
+fn new_round(event: IcalEvent, name: &str, kind: &str) -> Result<Round, Error> {
+    let country =
+        get_property(&event, "LOCATION").ok_or_else(|| Error::msg("LOCATION property missing"))?;
+    let start_str =
+        get_property(&event, "DTSTART").ok_or_else(|| Error::msg("DTSTART property missing"))?;
+    let end_str =
+        get_property(&event, "DTEND").ok_or_else(|| Error::msg("DTEND property missing"))?;
 
     let start: DateTime<Utc> = parse_ical_utc(&start_str)?;
     let end: DateTime<Utc> = parse_ical_utc(&end_str)?;
@@ -81,12 +118,14 @@ fn new_round(event: IcalEvent, name: &str, kind: &str) -> Option<Round> {
         over: false,
     };
 
-    Some(round)
+    Ok(round)
 }
 
-fn update_round(event: IcalEvent, round: &mut Round, kind: &str) -> Option<()> {
-    let start_str = get_property(&event, "DTSTART")?;
-    let end_str = get_property(&event, "DTEND")?;
+fn update_round(event: IcalEvent, round: &mut Round, kind: &str) -> Result<(), Error> {
+    let start_str =
+        get_property(&event, "DTSTART").ok_or_else(|| Error::msg("DTSTART property missing"))?;
+    let end_str =
+        get_property(&event, "DTEND").ok_or_else(|| Error::msg("DTEND property missing"))?;
 
     let start: DateTime<Utc> = parse_ical_utc(&start_str)?;
     let end: DateTime<Utc> = parse_ical_utc(&end_str)?;
@@ -107,14 +146,14 @@ fn update_round(event: IcalEvent, round: &mut Round, kind: &str) -> Option<()> {
         round.end = end;
     }
 
-    Some(())
+    Ok(())
 }
 
-#[io_cached(
-    map_error = r##"|e| anyhow::anyhow!(format!("disk cache error {:?}", e))"##,
-    disk = true,
-    time = 1800
-)]
+// #[io_cached(
+//     map_error = r##"|e| anyhow::anyhow!(format!("disk cache error {:?}", e))"##,
+//     disk = true,
+//     time = 1800
+// )]
 async fn get_schedule(year: i32) -> Result<Vec<Round>, anyhow::Error> {
     // webcal://ics.ecal.com/ecal-sub/660897ca63f9ca0008bcbea6/Formula%201.ics
     // *note this is a link created by entering a email and other info on the f1 website
@@ -145,9 +184,12 @@ async fn get_schedule(year: i32) -> Result<Vec<Round>, anyhow::Error> {
                     let _ = update_round(event, round, &kind);
                 }
                 None => {
-                    let Some(new_round) = new_round(event, &name, &kind) else {
-                        warn!("failed to create round with name: {}", name);
-                        continue;
+                    let new_round = match new_round(event, &name, &kind) {
+                        Ok(new_round) => new_round,
+                        Err(err) => {
+                            warn!("failed to create round with name: {}: {:?}", name, err);
+                            continue;
+                        }
                     };
 
                     if new_round.start.year() != year {
