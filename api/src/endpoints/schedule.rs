@@ -149,11 +149,11 @@ fn update_round(event: IcalEvent, round: &mut Round, kind: &str) -> Result<(), E
     Ok(())
 }
 
-// #[io_cached(
-//     map_error = r##"|e| anyhow::anyhow!(format!("disk cache error {:?}", e))"##,
-//     disk = true,
-//     time = 1800
-// )]
+#[io_cached(
+    map_error = r##"|e| anyhow::anyhow!(format!("disk cache error {:?}", e))"##,
+    disk = true,
+    time = 1800
+)]
 async fn get_schedule(year: i32) -> Result<Vec<Round>, anyhow::Error> {
     // webcal://ics.ecal.com/ecal-sub/660897ca63f9ca0008bcbea6/Formula%201.ics
     // *note this is a link created by entering a email and other info on the f1 website
