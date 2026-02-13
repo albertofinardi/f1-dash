@@ -120,7 +120,7 @@ function DesktopStaticBar({ show }: { show: boolean }) {
 
 			<div className="hidden md:items-center lg:flex">{show && <WeatherInfo />}</div>
 
-			<div className="flex justify-end">{show && <TrackInfo />}</div>
+			<div className="flex justify-end px-4">{show && <TrackInfo />}</div>
 		</div>
 	);
 }

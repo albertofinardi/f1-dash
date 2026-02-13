@@ -13,7 +13,7 @@ type MessageMap = {
 
 export const getTrackStatusMessage = (statusCode: number | undefined): StatusMessage | null => {
 	const messageMap: MessageMap = {
-		1: { message: "Green Flag", color: "bg-emerald-500", trackColor: "stroke-white", hex: "#34b981" },
+		1: { message: "Track Clear", color: "bg-emerald-500", trackColor: "stroke-white", hex: "#34b981" },
 		2: {
 			message: "Yellow Flag",
 			color: "bg-amber-400",

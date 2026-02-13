@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 
 import type { PositionCar, TimingDataDriver } from "@/types/state.type";
@@ -25,25 +25,43 @@ import {
 const SPACE = 1000;
 const ROTATION_FIX = 90;
 
+type DriverPositionResult = {
+	pos: PositionCar;
+	pathRatio: number;
+};
+
 // Function to calculate driver position based on their segment progress
 function getDriverPosition(
 	timingDriver: TimingDataDriver | undefined,
 	originalTrackPoints: { x: number; y: number }[] | null,
-): PositionCar | null {
-	if (!timingDriver || !originalTrackPoints || originalTrackPoints.length === 0) {
+): DriverPositionResult | null {
+	if (!originalTrackPoints || originalTrackPoints.length === 0) {
 		return null;
 	}
+	// No timing data: show driver at start of track
+	if (!timingDriver) {
+		const trackPoint = originalTrackPoints[0];
+		return {
+			pos: { Status: "OnTrack", X: trackPoint.x, Y: trackPoint.y, Z: 0 },
+			pathRatio: 0,
+		};
+	}
 
-	// Get all segments from all sectors
-	const allSegments = timingDriver.Sectors.flatMap((sector) => sector.Segments);
+	// Get all segments from all sectors (guard missing Sectors)
+	const sectors = timingDriver.Sectors ?? [];
+	const allSegments = sectors.flatMap((sector) => sector.Segments ?? []);
 
 	if (allSegments.length === 0) {
 		// No segments available, position at start/finish line
+		const trackPoint = originalTrackPoints[0];
 		return {
-			Status: "OnTrack",
-			X: originalTrackPoints[0].x,
-			Y: originalTrackPoints[0].y,
-			Z: 0,
+			pos: {
+				Status: "OnTrack",
+				X: trackPoint.x,
+				Y: trackPoint.y,
+				Z: 0,
+			},
+			pathRatio: 0,
 		};
 	}
 
@@ -83,18 +101,52 @@ function getDriverPosition(
 	const segmentSize = 1 / Math.max(allSegments.length, 1);
 	const adjustedRatio = baseRatio + segmentProgress * segmentSize;
 
-	const positionIndex = Math.floor(adjustedRatio * (originalTrackPoints.length - 1));
+	const positionIndex = adjustedRatio * (originalTrackPoints.length - 1);
 
-	// Ensure we don't go out of bounds
+	// Ensure we don't go out of bounds (keep as float for smooth path interpolation)
 	const safeIndex = Math.min(Math.max(positionIndex, 0), originalTrackPoints.length - 1);
+	const segment = Math.floor(safeIndex);
+	const t = safeIndex - segment;
+	const i0 = Math.min(segment, originalTrackPoints.length - 1);
+	const i1 = Math.min(segment + 1, originalTrackPoints.length - 1);
+	const p0 = originalTrackPoints[i0];
+	const p1 = originalTrackPoints[i1];
+	const trackPoint = {
+		x: p0.x + t * (p1.x - p0.x),
+		y: p0.y + t * (p1.y - p0.y),
+	};
 
-	const trackPoint = originalTrackPoints[safeIndex];
+	// Path ratio 0..1 for animation along the track
+	const pathRatio = safeIndex / Math.max(originalTrackPoints.length - 1, 1);
 
 	return {
-		Status: "OnTrack",
-		X: trackPoint.x,
-		Y: trackPoint.y,
-		Z: 0,
+		pos: {
+			Status: "OnTrack",
+			X: trackPoint.x,
+			Y: trackPoint.y,
+			Z: 0,
+		},
+		pathRatio,
+	};
+}
+
+// Get point on path at ratio in [0, 1] by interpolating between path points
+function getPointOnPath(
+	pathPoints: { x: number; y: number }[],
+	pathRatio: number,
+): { x: number; y: number } {
+	if (pathPoints.length === 0) return { x: 0, y: 0 };
+	if (pathPoints.length === 1) return pathPoints[0];
+	const n = pathPoints.length - 1;
+	const i = pathRatio * n;
+	const i0 = Math.min(Math.floor(i), pathPoints.length - 1);
+	const i1 = Math.min(i0 + 1, pathPoints.length - 1);
+	const t = i - i0;
+	const p0 = pathPoints[i0];
+	const p1 = pathPoints[i1];
+	return {
+		x: p0.x + t * (p1.x - p0.x),
+		y: p0.y + t * (p1.y - p0.y),
 	};
 }
 
@@ -274,7 +326,7 @@ export default function Map({ filter }: Props) {
 					/>
 				))}
 
-			{centerX && centerY && drivers && timingDrivers && (
+			{centerX && centerY && drivers && originalTrackPoints && (
 				<>
 					{Object.values(drivers)
 						.reverse()
@@ -286,10 +338,10 @@ export default function Map({ filter }: Props) {
 								: false;
 							const pit = timingDriver ? timingDriver.InPit : false;
 
-							const driverPosition = getDriverPosition(timingDriver, originalTrackPoints);
+							const driverPositionResult = getDriverPosition(timingDriver, originalTrackPoints);
 
 							// Skip rendering if we can't determine position
-							if (!driverPosition) return null;
+							if (!driverPositionResult || !points) return null;
 
 							return (
 								<CarDot
@@ -299,10 +351,8 @@ export default function Map({ filter }: Props) {
 									color={driver.TeamColour}
 									pit={pit}
 									hidden={hidden}
-									pos={driverPosition}
-									rotation={rotation}
-									centerX={centerX}
-									centerY={centerY}
+									pathPoints={points}
+									pathRatio={driverPositionResult.pathRatio}
 								/>
 							);
 						})}
@@ -326,33 +376,74 @@ const CornerNumber: React.FC<CornerNumberProps> = ({ number, x, y }) => {
 	);
 };
 
+const PATH_ANIMATION_DURATION_MS = 1000;
+
 type CarDotProps = {
 	name: string;
 	color: string | undefined;
 	favoriteDriver: boolean;
-
 	pit: boolean;
 	hidden: boolean;
-
-	pos: PositionCar;
-	rotation: number;
-
-	centerX: number;
-	centerY: number;
+	pathPoints: { x: number; y: number }[];
+	pathRatio: number;
 };
 
-const CarDot = ({ pos, name, color, favoriteDriver, pit, hidden, rotation, centerX, centerY }: CarDotProps) => {
-	const rotatedPos = rotate(pos.X, pos.Y, rotation, centerX, centerY);
-	const transform = [`translateX(${rotatedPos.x}px)`, `translateY(${rotatedPos.y}px)`].join(" ");
+const CarDot = ({ name, color, favoriteDriver, pit, hidden, pathPoints, pathRatio }: CarDotProps) => {
+	const [displayPathRatio, setDisplayPathRatio] = useState(pathRatio);
+	const displayPathRatioRef = useRef(pathRatio);
+	displayPathRatioRef.current = displayPathRatio;
+
+	// Animate displayPathRatio toward pathRatio along the path (no straight-line cut)
+	useEffect(() => {
+		const startRatio = displayPathRatioRef.current;
+		const endRatio = pathRatio;
+		const startTime = performance.now();
+
+		// Handle wrap-around: if driver crosses start/finish, take the shorter path along the track
+		let delta = endRatio - startRatio;
+		if (Math.abs(delta) > 0.5) {
+			delta += delta > 0 ? -1 : 1;
+		}
+
+		let rafId: number;
+
+		const tick = (now: number) => {
+			const elapsed = now - startTime;
+			const t = Math.min(elapsed / PATH_ANIMATION_DURATION_MS, 1);
+			// Linear ease so motion is constant along the path
+			const newRatio = startRatio + delta * t;
+			// Wrap into [0, 1]
+			const wrapped = newRatio < 0 ? newRatio + 1 : newRatio > 1 ? newRatio - 1 : newRatio;
+			displayPathRatioRef.current = wrapped;
+			setDisplayPathRatio(wrapped);
+			if (t < 1) {
+				rafId = requestAnimationFrame(tick);
+			}
+		};
+
+		rafId = requestAnimationFrame(tick);
+		return () => cancelAnimationFrame(rafId);
+	}, [pathRatio]);
+
+	// Sync when path points change (e.g. new circuit) — jump to current pathRatio without animating
+	useEffect(() => {
+		setDisplayPathRatio(pathRatio);
+		displayPathRatioRef.current = pathRatio;
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- only run when track path (circuit) changes
+	}, [pathPoints]);
+
+	const pathRatioClamped = Number.isFinite(displayPathRatio)
+		? Math.min(1, Math.max(0, displayPathRatio))
+		: 0;
+	const point = getPointOnPath(pathPoints, pathRatioClamped);
+	const x = Number.isFinite(point.x) ? point.x : 0;
+	const y = Number.isFinite(point.y) ? point.y : 0;
 
 	return (
 		<g
+			transform={`translate(${x}, ${y})`}
 			className={clsx("fill-zinc-700", { "opacity-30": pit }, { "opacity-0!": hidden })}
-			style={{
-				transition: "all 1s linear",
-				transform,
-				...(color && { fill: `#${color}` }),
-			}}
+			style={color ? { fill: `#${color}` } : undefined}
 		>
 			<circle id={`map.driver.circle`} r={120} />
 			<text
@@ -373,7 +464,6 @@ const CarDot = ({ pos, name, color, favoriteDriver, pit, hidden, rotation, cente
 					r={180}
 					fill="transparent"
 					strokeWidth={40}
-					style={{ transition: "all 1s linear" }}
 				/>
 			)}
 		</g>

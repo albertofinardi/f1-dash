@@ -15,7 +15,7 @@ export default function HumidityComplication({ value }: Props) {
 
 			<div className="mt-2 flex flex-col items-center gap-0.5">
 				<p className="flex h-[22px] shrink-0 text-xl leading-[normal] font-medium text-[color:var(--Base-Text,#F2F2F2)] not-italic">
-					{value}
+					{Math.round(value)}
 				</p>
 				<Image src={humidityIcon} alt="humidity icon" className="h-[11px] w-auto" />
 			</div>
