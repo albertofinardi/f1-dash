@@ -23,9 +23,6 @@ export default function TrackInfo() {
 			{!!currentTrackStatus ? (
 				<div
 					className={clsx("flex h-8 items-center truncate rounded-md px-2", currentTrackStatus.color)}
-					style={{
-						boxShadow: `0 0 60px 10px ${currentTrackStatus.hex}`,
-					}}
 				>
 					<p className="text-lg font-medium">{currentTrackStatus.message}</p>
 				</div>

@@ -16,8 +16,8 @@ export default function Standings() {
 	if (!isRace) {
 		return (
 			<div className="flex h-full w-full flex-col items-center justify-center">
-				<p>championship standings unavailable</p>
-				<p className="text-sm text-zinc-500">currently only available during a race</p>
+				<p>Championship standings unavailable</p>
+				<p className="text-sm text-zinc-500">Currently only available during a race</p>
 			</div>
 		);
 	}

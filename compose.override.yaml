@@ -1,0 +1,21 @@
+# Build images locally (e.g. for linux/arm64 on Apple Silicon).
+# With this file, `docker compose up -d` builds instead of pulling from ghcr.io.
+# Remove or rename this file to use the pre-built amd64 images from the registry.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: dockerfile
+      target: api
+
+  realtime:
+    build:
+      context: .
+      dockerfile: dockerfile
+      target: realtime
+
+  web:
+    build:
+      context: ./dashboard
+      dockerfile: dockerfile
