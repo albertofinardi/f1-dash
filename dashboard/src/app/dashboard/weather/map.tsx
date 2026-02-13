@@ -26,43 +26,73 @@ export function WeatherMap() {
 
 	const [frames, setFrames] = useState<{ id: number; time: number }[]>([]);
 	const currentFrameRef = useRef<number>(0);
+	const rainviewerDataRef = useRef<{ host: string; pathFrames: { path: string }[] } | null>(null);
+
+	const LAYER_ID = "rainviewer-radar";
+	const SOURCE_ID = "rainviewer-radar";
+
+	const buildTileUrl = (host: string, path: string) => {
+		const base = host.replace(/\/$/, "") + (path.startsWith("/") ? path : `/${path}`);
+		return `${base}/256/{z}/{x}/{y}/2/1_0.png`;
+	};
+
+	const addRadarLayer = (map: Map, frameIdx: number) => {
+		const data = rainviewerDataRef.current;
+		if (!data || !data.pathFrames[frameIdx]) return;
+
+		const tileUrl = buildTileUrl(data.host, data.pathFrames[frameIdx].path);
+		map.addSource(SOURCE_ID, {
+			type: "raster",
+			tiles: [tileUrl],
+			tileSize: 256,
+			maxzoom: 7,
+		});
+		map.addLayer({
+			id: LAYER_ID,
+			type: "raster",
+			source: SOURCE_ID,
+			paint: {
+				"raster-opacity": 0.8,
+				"raster-fade-duration": 200,
+				"raster-resampling": "nearest",
+			},
+		});
+	};
+
+	const removeRadarLayer = (map: Map) => {
+		if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+		if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+	};
 
 	const handleMapLoad = async () => {
-		if (!mapRef.current) return;
+		const map = mapRef.current;
+		if (!map) return;
+
+		removeRadarLayer(map);
 
 		const rainviewer = await getRainviewer();
-		if (!rainviewer) return;
+		if (!rainviewer || mapRef.current !== map) return;
 
 		const pathFrames = [...rainviewer.radar.past, ...rainviewer.radar.nowcast];
+		rainviewerDataRef.current = {
+			host: rainviewer.host,
+			pathFrames,
+		};
 
-		for (let i = 0; i < pathFrames.length; i++) {
-			const frame = pathFrames[i];
-
-			mapRef.current.addLayer({
-				id: `rainviewer-frame-${i}`,
-				type: "raster",
-				source: {
-					type: "raster",
-					tiles: [`${rainviewer.host}/${frame.path}/256/{z}/{x}/{y}/8/1_0.webp`],
-					tileSize: 256,
-				},
-				paint: {
-					"raster-opacity": 0,
-					"raster-fade-duration": 200,
-					"raster-resampling": "nearest",
-				},
-			});
-		}
+		const lastFrameIdx = pathFrames.length - 1;
+		currentFrameRef.current = lastFrameIdx;
+		addRadarLayer(map, lastFrameIdx);
 
 		setFrames(pathFrames.map((frame, i) => ({ time: frame.time, id: i })));
 	};
 
 	useEffect(() => {
+		if (!mapContainerRef.current || !meeting) return;
+
+		let libMap: Map | null = null;
+		let cancelled = false;
+
 		(async () => {
-			if (!mapContainerRef.current) return;
-
-			if (!meeting) return;
-
 			const [coordsC, coordsA] = await Promise.all([
 				fetchCoords(`${meeting.Country.Name}, ${meeting.Location} circuit`),
 				fetchCoords(`${meeting.Country.Name}, ${meeting.Location} autodrome`),
@@ -70,7 +100,9 @@ export function WeatherMap() {
 
 			const coords = coordsC || coordsA;
 
-			const libMap = new maplibregl.Map({
+			if (cancelled || !mapContainerRef.current) return;
+
+			libMap = new maplibregl.Map({
 				container: mapContainerRef.current,
 				style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
 				center: coords ? [coords.lon, coords.lat] : undefined,
@@ -81,10 +113,11 @@ export function WeatherMap() {
 			});
 
 			libMap.on("load", async () => {
+				if (cancelled) return;
 				setLoading(false);
 
 				if (coords) {
-					new Marker().setLngLat([coords.lon, coords.lat]).addTo(libMap);
+					new Marker().setLngLat([coords.lon, coords.lat]).addTo(libMap!);
 				}
 
 				await handleMapLoad();
@@ -92,11 +125,22 @@ export function WeatherMap() {
 
 			mapRef.current = libMap;
 		})();
+
+		return () => {
+			cancelled = true;
+			if (mapRef.current) {
+				mapRef.current.remove();
+				mapRef.current = null;
+			}
+		};
 	}, [meeting]);
 
 	const setFrame = (idx: number) => {
-		mapRef.current?.setPaintProperty(`rainviewer-frame-${currentFrameRef.current}`, "raster-opacity", 0);
-		mapRef.current?.setPaintProperty(`rainviewer-frame-${idx}`, "raster-opacity", 0.8);
+		const map = mapRef.current;
+		if (!map || currentFrameRef.current === idx) return;
+
+		removeRadarLayer(map);
+		addRadarLayer(map, idx);
 		currentFrameRef.current = idx;
 	};
 

@@ -5,7 +5,8 @@ COPY package*.json yarn.lock .yarnrc.yml ./
 
 RUN corepack enable
 
-RUN yarn install --immutable
+# Retry on network timeout (ETIMEDOUT) common in Docker/CI
+RUN for i in 1 2 3; do yarn install --immutable && break; sleep 30; done
 
 FROM dependencies AS builder
 
@@ -15,6 +16,9 @@ ENV NEXT_STANDALONE=1
 ENV NEXT_NO_COMPRESS=1
 
 COPY . .
+
+# Sync workspace root into lockfile (Yarn 4 expects "f1-dash@workspace:." in lockfile)
+RUN for i in 1 2 3; do yarn install && break; sleep 30; done
 
 RUN yarn build
 
